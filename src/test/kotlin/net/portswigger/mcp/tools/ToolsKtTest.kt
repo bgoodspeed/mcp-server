@@ -984,6 +984,126 @@ class ToolsKtTest {
         }
     }
 
+    @Nested
+    inner class BCheckToolsTests {
+        private val scanner = mockk<burp.api.montoya.scanner.Scanner>()
+        private val bChecks = mockk<burp.api.montoya.scanner.bchecks.BChecks>()
+
+        @BeforeEach
+        fun setupBChecks() {
+            val burpSuite = mockk<burp.api.montoya.burpsuite.BurpSuite>()
+            val version = mockk<burp.api.montoya.core.Version>()
+            every { api.burpSuite() } returns burpSuite
+            every { burpSuite.version() } returns version
+            every { version.edition() } returns BurpSuiteEdition.PROFESSIONAL
+            every { burpSuite.taskExecutionEngine() } returns mockk(relaxed = true)
+            every { burpSuite.exportProjectOptionsAsJson() } returns "{}"
+            every { burpSuite.exportUserOptionsAsJson() } returns "{}"
+            every { burpSuite.importProjectOptionsFromJson(any()) } just runs
+            every { burpSuite.importUserOptionsFromJson(any()) } just runs
+
+            every { api.scanner() } returns scanner
+            every { scanner.bChecks() } returns bChecks
+
+            serverManager.stop {}
+            serverStarted = false
+            serverManager.start(config) { state ->
+                if (state is ServerState.Running) serverStarted = true
+            }
+
+            runBlocking {
+                var attempts = 0
+                while (!serverStarted && attempts < 30) {
+                    delay(100)
+                    attempts++
+                }
+                if (!serverStarted) throw IllegalStateException("Server failed to start after timeout")
+                client.connectToServer("http://127.0.0.1:${testPort}")
+            }
+        }
+
+        @Test
+        fun `import bcheck should return success when no errors`() {
+            val importResult = mockk<burp.api.montoya.scanner.bchecks.BCheckImportResult>()
+            every { importResult.status() } returns burp.api.montoya.scanner.bchecks.BCheckImportResult.Status.LOADED_WITHOUT_ERRORS
+            every { importResult.importErrors() } returns emptyList()
+            every { bChecks.importBCheck(any<String>()) } returns importResult
+
+            val script = """
+                metadata:
+                    language: v2-beta
+                    name: "Test BCheck"
+                    description: "A test check"
+                    author: "Test"
+                given response then
+                    if {latest.response} matches "test" then
+                        report issue:
+                            severity: info
+                            confidence: certain
+                    end if
+            """.trimIndent()
+
+            runBlocking {
+                val result = client.callTool(
+                    "import_b_check", mapOf(
+                        "script" to script
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("BCheck imported successfully (status: LOADED_WITHOUT_ERRORS)")
+            }
+
+            verify(exactly = 1) { bChecks.importBCheck(script) }
+        }
+
+        @Test
+        fun `import bcheck should return errors when script is invalid`() {
+            val importResult = mockk<burp.api.montoya.scanner.bchecks.BCheckImportResult>()
+            every { importResult.status() } returns burp.api.montoya.scanner.bchecks.BCheckImportResult.Status.LOADED_WITH_ERRORS
+            every { importResult.importErrors() } returns listOf("Missing metadata block", "Invalid given statement")
+            every { bChecks.importBCheck(any<String>()) } returns importResult
+
+            runBlocking {
+                val result = client.callTool(
+                    "import_b_check", mapOf(
+                        "script" to "invalid script"
+                    )
+                )
+
+                delay(100)
+                val text = result.expectTextContent()
+                assertTrue(text.contains("LOADED_WITH_ERRORS"))
+                assertTrue(text.contains("Missing metadata block"))
+                assertTrue(text.contains("Invalid given statement"))
+            }
+
+            verify(exactly = 1) { bChecks.importBCheck("invalid script") }
+        }
+
+        @Test
+        fun `import bcheck should pass enabled parameter when specified`() {
+            val importResult = mockk<burp.api.montoya.scanner.bchecks.BCheckImportResult>()
+            every { importResult.status() } returns burp.api.montoya.scanner.bchecks.BCheckImportResult.Status.LOADED_WITHOUT_ERRORS
+            every { importResult.importErrors() } returns emptyList()
+            every { bChecks.importBCheck(any<String>(), any()) } returns importResult
+
+            runBlocking {
+                val result = client.callTool(
+                    "import_b_check", mapOf(
+                        "script" to "some script",
+                        "enabled" to false
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("BCheck imported successfully (status: LOADED_WITHOUT_ERRORS)")
+            }
+
+            verify(exactly = 1) { bChecks.importBCheck("some script", false) }
+        }
+    }
+
     @Test
     fun `tool name conversion should work properly`() {
         assertEquals("send_http1_request", "SendHttp1Request".toLowerSnakeCase())
@@ -1005,6 +1125,7 @@ class ToolsKtTest {
             assertFalse(tools.any { it.name == "get_scanner_issues" })
             assertFalse(tools.any { it.name == "generate_collaborator_payload" })
             assertFalse(tools.any { it.name == "get_collaborator_interactions" })
+            assertFalse(tools.any { it.name == "import_b_check" })
         }
 
         every { version.edition() } returns BurpSuiteEdition.PROFESSIONAL
@@ -1029,6 +1150,7 @@ class ToolsKtTest {
             assertTrue(tools.any { it.name == "get_scanner_issues" })
             assertTrue(tools.any { it.name == "generate_collaborator_payload" })
             assertTrue(tools.any { it.name == "get_collaborator_interactions" })
+            assertTrue(tools.any { it.name == "import_b_check" })
         }
     }
 }

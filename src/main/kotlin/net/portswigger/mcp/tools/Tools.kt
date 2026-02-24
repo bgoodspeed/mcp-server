@@ -229,6 +229,33 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
                 }
             }
         }
+
+        mcpTool<ImportBCheck>(
+            "Imports a BCheck script into Burp Scanner. " +
+            "BChecks are custom scan checks written in the BCheck definition language. " +
+            "The script must start with a metadata block (language, name, description, author, tags) " +
+            "and contain a single given...then statement. " +
+            "By default the BCheck is enabled after import if there are no errors. " +
+            "Set enabled to false to import in a disabled state. " +
+            "Returns the import status and any validation errors."
+        ) {
+            api.logging().logToOutput("MCP importing BCheck")
+
+            val result = if (enabled != null) {
+                api.scanner().bChecks().importBCheck(script, enabled)
+            } else {
+                api.scanner().bChecks().importBCheck(script)
+            }
+
+            val status = result.status().name
+            val errors = result.importErrors()
+
+            if (errors.isEmpty()) {
+                "BCheck imported successfully (status: $status)"
+            } else {
+                "BCheck imported with errors (status: $status):\n${errors.joinToString("\n")}"
+            }
+        }
     }
 
     mcpPaginatedTool<GetProxyHttpHistory>("Displays items within the proxy HTTP history") {
@@ -426,4 +453,10 @@ data class GenerateCollaboratorPayload(
 @Serializable
 data class GetCollaboratorInteractions(
     val payloadId: String? = null
+)
+
+@Serializable
+data class ImportBCheck(
+    val script: String,
+    val enabled: Boolean? = null
 )
