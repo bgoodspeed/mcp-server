@@ -12,6 +12,7 @@ import burp.api.montoya.http.message.HttpHeader
 import burp.api.montoya.http.message.requests.HttpRequest
 import burp.api.montoya.logging.Logging
 import burp.api.montoya.persistence.PersistedObject
+import burp.api.montoya.core.Annotations
 import burp.api.montoya.proxy.Proxy
 import burp.api.montoya.proxy.ProxyHttpRequestResponse
 import burp.api.montoya.utilities.Base64Utils
@@ -816,6 +817,148 @@ class ToolsKtTest {
         }
     }
     
+    @Nested
+    inner class TagToolsTests {
+        @Test
+        fun `tag proxy request should set tag when no existing notes`() {
+            val proxy = mockk<Proxy>()
+            val annotations = mockk<Annotations>()
+            val item = mockk<ProxyHttpRequestResponse>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item)
+            every { item.annotations() } returns annotations
+            every { annotations.notes() } returns null
+            every { annotations.setNotes(any()) } just runs
+
+            runBlocking {
+                val result = client.callTool(
+                    "tag_proxy_request", mapOf(
+                        "index" to 0,
+                        "tag" to "interesting"
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Tag 'interesting' applied to proxy history item at index 0")
+            }
+
+            verify(exactly = 1) { annotations.setNotes("[mcp-tag: interesting]") }
+        }
+
+        @Test
+        fun `tag proxy request should append tag to existing notes`() {
+            val proxy = mockk<Proxy>()
+            val annotations = mockk<Annotations>()
+            val item = mockk<ProxyHttpRequestResponse>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item)
+            every { item.annotations() } returns annotations
+            every { annotations.notes() } returns "existing note"
+            every { annotations.setNotes(any()) } just runs
+
+            runBlocking {
+                val result = client.callTool(
+                    "tag_proxy_request", mapOf(
+                        "index" to 0,
+                        "tag" to "sqli"
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Tag 'sqli' applied to proxy history item at index 0")
+            }
+
+            verify(exactly = 1) { annotations.setNotes("existing note\n[mcp-tag: sqli]") }
+        }
+
+        @Test
+        fun `tag proxy request should return error for out of bounds index`() {
+            val proxy = mockk<Proxy>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns emptyList()
+
+            runBlocking {
+                val result = client.callTool(
+                    "tag_proxy_request", mapOf(
+                        "index" to 5,
+                        "tag" to "test"
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Invalid index: 5. Proxy history contains 0 items (0-indexed).")
+            }
+        }
+
+        @Test
+        fun `get proxy request tag should return tags`() {
+            val proxy = mockk<Proxy>()
+            val annotations = mockk<Annotations>()
+            val item = mockk<ProxyHttpRequestResponse>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item)
+            every { item.annotations() } returns annotations
+            every { annotations.notes() } returns "some note\n[mcp-tag: sqli]\n[mcp-tag: interesting]"
+
+            runBlocking {
+                val result = client.callTool(
+                    "get_proxy_request_tag", mapOf(
+                        "index" to 0
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("sqli\ninteresting")
+            }
+        }
+
+        @Test
+        fun `get proxy request tag should return no tags message when none exist`() {
+            val proxy = mockk<Proxy>()
+            val annotations = mockk<Annotations>()
+            val item = mockk<ProxyHttpRequestResponse>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item)
+            every { item.annotations() } returns annotations
+            every { annotations.notes() } returns "just a regular note"
+
+            runBlocking {
+                val result = client.callTool(
+                    "get_proxy_request_tag", mapOf(
+                        "index" to 0
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("No tags found for proxy history item at index 0")
+            }
+        }
+
+        @Test
+        fun `get proxy request tag should return error for out of bounds index`() {
+            val proxy = mockk<Proxy>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns emptyList()
+
+            runBlocking {
+                val result = client.callTool(
+                    "get_proxy_request_tag", mapOf(
+                        "index" to 3
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Invalid index: 3. Proxy history contains 0 items (0-indexed).")
+            }
+        }
+    }
+
     @Nested
     inner class CollaboratorToolsTests {
         private val collaborator = mockk<Collaborator>()

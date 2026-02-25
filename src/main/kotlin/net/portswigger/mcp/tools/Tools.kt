@@ -307,6 +307,63 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
             .map { truncateIfNeeded(Json.encodeToString(it.toSerializableForm())) }
     }
 
+    mcpTool<TagProxyRequest>(
+        "Tags a proxy history request by appending a tag string to its notes. " +
+        "The index is the 0-based position in the proxy history list (same ordering as get_proxy_http_history). " +
+        "The tag is stored as [mcp-tag: value] metadata in the request's notes."
+    ) {
+        val allowed = runBlocking {
+            checkHistoryPermissionOrDeny(HistoryAccessType.HTTP_HISTORY, config, api, "HTTP history tag")
+        }
+        if (!allowed) {
+            return@mcpTool "HTTP history access denied by Burp Suite"
+        }
+
+        val history = api.proxy().history()
+        if (index < 0 || index >= history.size) {
+            return@mcpTool "Invalid index: $index. Proxy history contains ${history.size} items (0-indexed)."
+        }
+
+        val item = history[index]
+        val existingNotes = item.annotations().notes()
+        val tagEntry = "[mcp-tag: $tag]"
+        val newNotes = if (existingNotes.isNullOrEmpty()) tagEntry else "$existingNotes\n$tagEntry"
+        item.annotations().setNotes(newNotes)
+
+        "Tag '$tag' applied to proxy history item at index $index"
+    }
+
+    mcpTool<GetProxyRequestTag>(
+        "Retrieves all MCP tags from a proxy history request's notes. " +
+        "The index is the 0-based position in the proxy history list (same ordering as get_proxy_http_history)."
+    ) {
+        val allowed = runBlocking {
+            checkHistoryPermissionOrDeny(HistoryAccessType.HTTP_HISTORY, config, api, "HTTP history tag")
+        }
+        if (!allowed) {
+            return@mcpTool "HTTP history access denied by Burp Suite"
+        }
+
+        val history = api.proxy().history()
+        if (index < 0 || index >= history.size) {
+            return@mcpTool "Invalid index: $index. Proxy history contains ${history.size} items (0-indexed)."
+        }
+
+        val notes = history[index].annotations().notes()
+        if (notes.isNullOrEmpty()) {
+            return@mcpTool "No tags found for proxy history item at index $index"
+        }
+
+        val tagPattern = Regex("\\[mcp-tag: (.+?)]")
+        val tags = tagPattern.findAll(notes).map { it.groupValues[1] }.toList()
+
+        if (tags.isEmpty()) {
+            "No tags found for proxy history item at index $index"
+        } else {
+            tags.joinToString("\n")
+        }
+    }
+
     mcpTool<SetTaskExecutionEngineState>("Sets the state of Burp's task execution engine (paused or unpaused)") {
         api.burpSuite().taskExecutionEngine().state = if (running) RUNNING else PAUSED
 
@@ -486,3 +543,9 @@ data class ImportBCheck(
 data class ImportBambda(
     val script: String
 )
+
+@Serializable
+data class TagProxyRequest(val index: Int, val tag: String)
+
+@Serializable
+data class GetProxyRequestTag(val index: Int)
