@@ -12,6 +12,7 @@ import burp.api.montoya.http.message.HttpHeader
 import burp.api.montoya.http.message.requests.HttpRequest
 import burp.api.montoya.logging.Logging
 import burp.api.montoya.persistence.PersistedObject
+import burp.api.montoya.core.Annotations
 import burp.api.montoya.proxy.Proxy
 import burp.api.montoya.proxy.ProxyHttpRequestResponse
 import burp.api.montoya.utilities.Base64Utils
@@ -690,6 +691,63 @@ class ToolsKtTest {
     }
     
     @Nested
+    inner class BambdaToolsTests {
+        private val bambda = mockk<burp.api.montoya.bambda.Bambda>()
+
+        @BeforeEach
+        fun setupBambda() {
+            every { api.bambda() } returns bambda
+        }
+
+        @Test
+        fun `import bambda should return success when no errors`() {
+            val importResult = mockk<burp.api.montoya.bambda.BambdaImportResult>()
+            every { importResult.status() } returns burp.api.montoya.bambda.BambdaImportResult.Status.LOADED_WITHOUT_ERRORS
+            every { importResult.importErrors() } returns emptyList()
+            every { bambda.importBambda(any()) } returns importResult
+
+            val script = "some bambda script content"
+
+            runBlocking {
+                val result = client.callTool(
+                    "import_bambda", mapOf(
+                        "script" to script
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Bambda imported successfully (status: LOADED_WITHOUT_ERRORS)")
+            }
+
+            verify(exactly = 1) { bambda.importBambda(script) }
+        }
+
+        @Test
+        fun `import bambda should return errors when script is invalid`() {
+            val importResult = mockk<burp.api.montoya.bambda.BambdaImportResult>()
+            every { importResult.status() } returns burp.api.montoya.bambda.BambdaImportResult.Status.LOADED_WITH_ERRORS
+            every { importResult.importErrors() } returns listOf("Compilation error: unexpected token", "Missing return statement")
+            every { bambda.importBambda(any()) } returns importResult
+
+            runBlocking {
+                val result = client.callTool(
+                    "import_bambda", mapOf(
+                        "script" to "invalid bambda"
+                    )
+                )
+
+                delay(100)
+                val text = result.expectTextContent()
+                assertTrue(text.contains("LOADED_WITH_ERRORS"))
+                assertTrue(text.contains("Compilation error: unexpected token"))
+                assertTrue(text.contains("Missing return statement"))
+            }
+
+            verify(exactly = 1) { bambda.importBambda("invalid bambda") }
+        }
+    }
+
+    @Nested
     inner class PaginatedToolsTests {
         @Test
         fun `get proxy history should paginate properly`() {
@@ -759,6 +817,148 @@ class ToolsKtTest {
         }
     }
     
+    @Nested
+    inner class TagToolsTests {
+        @Test
+        fun `tag proxy request should set tag when no existing notes`() {
+            val proxy = mockk<Proxy>()
+            val annotations = mockk<Annotations>()
+            val item = mockk<ProxyHttpRequestResponse>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item)
+            every { item.annotations() } returns annotations
+            every { annotations.notes() } returns null
+            every { annotations.setNotes(any()) } just runs
+
+            runBlocking {
+                val result = client.callTool(
+                    "tag_proxy_request", mapOf(
+                        "index" to 0,
+                        "tag" to "interesting"
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Tag 'interesting' applied to proxy history item at index 0")
+            }
+
+            verify(exactly = 1) { annotations.setNotes("[mcp-tag: interesting]") }
+        }
+
+        @Test
+        fun `tag proxy request should append tag to existing notes`() {
+            val proxy = mockk<Proxy>()
+            val annotations = mockk<Annotations>()
+            val item = mockk<ProxyHttpRequestResponse>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item)
+            every { item.annotations() } returns annotations
+            every { annotations.notes() } returns "existing note"
+            every { annotations.setNotes(any()) } just runs
+
+            runBlocking {
+                val result = client.callTool(
+                    "tag_proxy_request", mapOf(
+                        "index" to 0,
+                        "tag" to "sqli"
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Tag 'sqli' applied to proxy history item at index 0")
+            }
+
+            verify(exactly = 1) { annotations.setNotes("existing note\n[mcp-tag: sqli]") }
+        }
+
+        @Test
+        fun `tag proxy request should return error for out of bounds index`() {
+            val proxy = mockk<Proxy>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns emptyList()
+
+            runBlocking {
+                val result = client.callTool(
+                    "tag_proxy_request", mapOf(
+                        "index" to 5,
+                        "tag" to "test"
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Invalid index: 5. Proxy history contains 0 items (0-indexed).")
+            }
+        }
+
+        @Test
+        fun `get proxy request tag should return tags`() {
+            val proxy = mockk<Proxy>()
+            val annotations = mockk<Annotations>()
+            val item = mockk<ProxyHttpRequestResponse>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item)
+            every { item.annotations() } returns annotations
+            every { annotations.notes() } returns "some note\n[mcp-tag: sqli]\n[mcp-tag: interesting]"
+
+            runBlocking {
+                val result = client.callTool(
+                    "get_proxy_request_tag", mapOf(
+                        "index" to 0
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("sqli\ninteresting")
+            }
+        }
+
+        @Test
+        fun `get proxy request tag should return no tags message when none exist`() {
+            val proxy = mockk<Proxy>()
+            val annotations = mockk<Annotations>()
+            val item = mockk<ProxyHttpRequestResponse>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item)
+            every { item.annotations() } returns annotations
+            every { annotations.notes() } returns "just a regular note"
+
+            runBlocking {
+                val result = client.callTool(
+                    "get_proxy_request_tag", mapOf(
+                        "index" to 0
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("No tags found for proxy history item at index 0")
+            }
+        }
+
+        @Test
+        fun `get proxy request tag should return error for out of bounds index`() {
+            val proxy = mockk<Proxy>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns emptyList()
+
+            runBlocking {
+                val result = client.callTool(
+                    "get_proxy_request_tag", mapOf(
+                        "index" to 3
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Invalid index: 3. Proxy history contains 0 items (0-indexed).")
+            }
+        }
+    }
+
     @Nested
     inner class CollaboratorToolsTests {
         private val collaborator = mockk<Collaborator>()
@@ -984,6 +1184,126 @@ class ToolsKtTest {
         }
     }
 
+    @Nested
+    inner class BCheckToolsTests {
+        private val scanner = mockk<burp.api.montoya.scanner.Scanner>()
+        private val bChecks = mockk<burp.api.montoya.scanner.bchecks.BChecks>()
+
+        @BeforeEach
+        fun setupBChecks() {
+            val burpSuite = mockk<burp.api.montoya.burpsuite.BurpSuite>()
+            val version = mockk<burp.api.montoya.core.Version>()
+            every { api.burpSuite() } returns burpSuite
+            every { burpSuite.version() } returns version
+            every { version.edition() } returns BurpSuiteEdition.PROFESSIONAL
+            every { burpSuite.taskExecutionEngine() } returns mockk(relaxed = true)
+            every { burpSuite.exportProjectOptionsAsJson() } returns "{}"
+            every { burpSuite.exportUserOptionsAsJson() } returns "{}"
+            every { burpSuite.importProjectOptionsFromJson(any()) } just runs
+            every { burpSuite.importUserOptionsFromJson(any()) } just runs
+
+            every { api.scanner() } returns scanner
+            every { scanner.bChecks() } returns bChecks
+
+            serverManager.stop {}
+            serverStarted = false
+            serverManager.start(config) { state ->
+                if (state is ServerState.Running) serverStarted = true
+            }
+
+            runBlocking {
+                var attempts = 0
+                while (!serverStarted && attempts < 30) {
+                    delay(100)
+                    attempts++
+                }
+                if (!serverStarted) throw IllegalStateException("Server failed to start after timeout")
+                client.connectToServer("http://127.0.0.1:${testPort}")
+            }
+        }
+
+        @Test
+        fun `import bcheck should return success when no errors`() {
+            val importResult = mockk<burp.api.montoya.scanner.bchecks.BCheckImportResult>()
+            every { importResult.status() } returns burp.api.montoya.scanner.bchecks.BCheckImportResult.Status.LOADED_WITHOUT_ERRORS
+            every { importResult.importErrors() } returns emptyList()
+            every { bChecks.importBCheck(any<String>()) } returns importResult
+
+            val script = """
+                metadata:
+                    language: v2-beta
+                    name: "Test BCheck"
+                    description: "A test check"
+                    author: "Test"
+                given response then
+                    if {latest.response} matches "test" then
+                        report issue:
+                            severity: info
+                            confidence: certain
+                    end if
+            """.trimIndent()
+
+            runBlocking {
+                val result = client.callTool(
+                    "import_b_check", mapOf(
+                        "script" to script
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("BCheck imported successfully (status: LOADED_WITHOUT_ERRORS)")
+            }
+
+            verify(exactly = 1) { bChecks.importBCheck(script) }
+        }
+
+        @Test
+        fun `import bcheck should return errors when script is invalid`() {
+            val importResult = mockk<burp.api.montoya.scanner.bchecks.BCheckImportResult>()
+            every { importResult.status() } returns burp.api.montoya.scanner.bchecks.BCheckImportResult.Status.LOADED_WITH_ERRORS
+            every { importResult.importErrors() } returns listOf("Missing metadata block", "Invalid given statement")
+            every { bChecks.importBCheck(any<String>()) } returns importResult
+
+            runBlocking {
+                val result = client.callTool(
+                    "import_b_check", mapOf(
+                        "script" to "invalid script"
+                    )
+                )
+
+                delay(100)
+                val text = result.expectTextContent()
+                assertTrue(text.contains("LOADED_WITH_ERRORS"))
+                assertTrue(text.contains("Missing metadata block"))
+                assertTrue(text.contains("Invalid given statement"))
+            }
+
+            verify(exactly = 1) { bChecks.importBCheck("invalid script") }
+        }
+
+        @Test
+        fun `import bcheck should pass enabled parameter when specified`() {
+            val importResult = mockk<burp.api.montoya.scanner.bchecks.BCheckImportResult>()
+            every { importResult.status() } returns burp.api.montoya.scanner.bchecks.BCheckImportResult.Status.LOADED_WITHOUT_ERRORS
+            every { importResult.importErrors() } returns emptyList()
+            every { bChecks.importBCheck(any<String>(), any()) } returns importResult
+
+            runBlocking {
+                val result = client.callTool(
+                    "import_b_check", mapOf(
+                        "script" to "some script",
+                        "enabled" to false
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("BCheck imported successfully (status: LOADED_WITHOUT_ERRORS)")
+            }
+
+            verify(exactly = 1) { bChecks.importBCheck("some script", false) }
+        }
+    }
+
     @Test
     fun `tool name conversion should work properly`() {
         assertEquals("send_http1_request", "SendHttp1Request".toLowerSnakeCase())
@@ -1005,6 +1325,7 @@ class ToolsKtTest {
             assertFalse(tools.any { it.name == "get_scanner_issues" })
             assertFalse(tools.any { it.name == "generate_collaborator_payload" })
             assertFalse(tools.any { it.name == "get_collaborator_interactions" })
+            assertFalse(tools.any { it.name == "import_b_check" })
         }
 
         every { version.edition() } returns BurpSuiteEdition.PROFESSIONAL
@@ -1029,6 +1350,7 @@ class ToolsKtTest {
             assertTrue(tools.any { it.name == "get_scanner_issues" })
             assertTrue(tools.any { it.name == "generate_collaborator_payload" })
             assertTrue(tools.any { it.name == "get_collaborator_interactions" })
+            assertTrue(tools.any { it.name == "import_b_check" })
         }
     }
 }
