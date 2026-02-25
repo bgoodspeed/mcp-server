@@ -364,6 +364,27 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
         }
     }
 
+    mcpPaginatedTool<SearchProxyHistoryByTag>(
+        "Searches the proxy HTTP history for requests that have an MCP tag matching the given substring. " +
+        "Returns all proxy history items where any [mcp-tag: ...] value contains the search string (case-insensitive)."
+    ) {
+        val allowed = runBlocking {
+            checkHistoryPermissionOrDeny(HistoryAccessType.HTTP_HISTORY, config, api, "HTTP history tag search")
+        }
+        if (!allowed) {
+            return@mcpPaginatedTool sequenceOf("HTTP history access denied by Burp Suite")
+        }
+
+        val tagPattern = Regex("\\[mcp-tag: (.+?)]")
+        api.proxy().history().asSequence().filter { item ->
+            val notes = item.annotations().notes()
+            if (notes.isNullOrEmpty()) return@filter false
+            tagPattern.findAll(notes).any { match ->
+                match.groupValues[1].contains(tag, ignoreCase = true)
+            }
+        }.map { truncateIfNeeded(Json.encodeToString(it.toSerializableForm())) }
+    }
+
     mcpTool<SetTaskExecutionEngineState>("Sets the state of Burp's task execution engine (paused or unpaused)") {
         api.burpSuite().taskExecutionEngine().state = if (running) RUNNING else PAUSED
 
@@ -549,3 +570,6 @@ data class TagProxyRequest(val index: Int, val tag: String)
 
 @Serializable
 data class GetProxyRequestTag(val index: Int)
+
+@Serializable
+data class SearchProxyHistoryByTag(val tag: String, override val count: Int, override val offset: Int) : Paginated
