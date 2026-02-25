@@ -957,6 +957,207 @@ class ToolsKtTest {
                 result.expectTextContent("Invalid index: 3. Proxy history contains 0 items (0-indexed).")
             }
         }
+
+        @Test
+        fun `search proxy history by tag should return matching items`() {
+            val proxy = mockk<Proxy>()
+            val item1 = mockk<ProxyHttpRequestResponse>()
+            val item2 = mockk<ProxyHttpRequestResponse>()
+            val item3 = mockk<ProxyHttpRequestResponse>()
+            val annotations1 = mockk<Annotations>()
+            val annotations2 = mockk<Annotations>()
+            val annotations3 = mockk<Annotations>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item1, item2, item3)
+            every { item1.annotations() } returns annotations1
+            every { item2.annotations() } returns annotations2
+            every { item3.annotations() } returns annotations3
+            every { annotations1.notes() } returns "[mcp-tag: sqli]"
+            every { annotations2.notes() } returns "[mcp-tag: xss]"
+            every { annotations3.notes() } returns "[mcp-tag: sqli-blind]"
+
+            mockkStatic("net.portswigger.mcp.schema.SerializationKt")
+
+            every { item1.toSerializableForm() } returns HttpRequestResponse(
+                request = "GET /login HTTP/1.1",
+                response = "HTTP/1.1 200 OK",
+                notes = "[mcp-tag: sqli]"
+            )
+            every { item3.toSerializableForm() } returns HttpRequestResponse(
+                request = "GET /search HTTP/1.1",
+                response = "HTTP/1.1 200 OK",
+                notes = "[mcp-tag: sqli-blind]"
+            )
+
+            runBlocking {
+                val result = client.callTool(
+                    "search_proxy_history_by_tag", mapOf(
+                        "tag" to "sqli",
+                        "count" to 10,
+                        "offset" to 0
+                    )
+                )
+
+                delay(100)
+                val text = result.expectTextContent()
+                assertTrue(text.contains("GET /login"))
+                assertTrue(text.contains("GET /search"))
+                assertFalse(text.contains("xss"))
+            }
+        }
+
+        @Test
+        fun `search proxy history by tag should be case insensitive`() {
+            val proxy = mockk<Proxy>()
+            val item = mockk<ProxyHttpRequestResponse>()
+            val annotations = mockk<Annotations>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item)
+            every { item.annotations() } returns annotations
+            every { annotations.notes() } returns "[mcp-tag: SQLInjection]"
+
+            mockkStatic("net.portswigger.mcp.schema.SerializationKt")
+
+            every { item.toSerializableForm() } returns HttpRequestResponse(
+                request = "GET /admin HTTP/1.1",
+                response = "HTTP/1.1 200 OK",
+                notes = "[mcp-tag: SQLInjection]"
+            )
+
+            runBlocking {
+                val result = client.callTool(
+                    "search_proxy_history_by_tag", mapOf(
+                        "tag" to "sqlinjection",
+                        "count" to 10,
+                        "offset" to 0
+                    )
+                )
+
+                delay(100)
+                val text = result.expectTextContent()
+                assertTrue(text.contains("GET /admin"))
+            }
+        }
+
+        @Test
+        fun `search proxy history by tag should return end of items when no matches`() {
+            val proxy = mockk<Proxy>()
+            val item = mockk<ProxyHttpRequestResponse>()
+            val annotations = mockk<Annotations>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item)
+            every { item.annotations() } returns annotations
+            every { annotations.notes() } returns "[mcp-tag: xss]"
+
+            runBlocking {
+                val result = client.callTool(
+                    "search_proxy_history_by_tag", mapOf(
+                        "tag" to "sqli",
+                        "count" to 10,
+                        "offset" to 0
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Reached end of items")
+            }
+        }
+
+        @Test
+        fun `search proxy history by tag should skip items with no notes`() {
+            val proxy = mockk<Proxy>()
+            val item1 = mockk<ProxyHttpRequestResponse>()
+            val item2 = mockk<ProxyHttpRequestResponse>()
+            val annotations1 = mockk<Annotations>()
+            val annotations2 = mockk<Annotations>()
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(item1, item2)
+            every { item1.annotations() } returns annotations1
+            every { item2.annotations() } returns annotations2
+            every { annotations1.notes() } returns null
+            every { annotations2.notes() } returns ""
+
+            runBlocking {
+                val result = client.callTool(
+                    "search_proxy_history_by_tag", mapOf(
+                        "tag" to "test",
+                        "count" to 10,
+                        "offset" to 0
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Reached end of items")
+            }
+        }
+
+        @Test
+        fun `search proxy history by tag should paginate results`() {
+            val proxy = mockk<Proxy>()
+            val items = (1..3).map { i ->
+                val item = mockk<ProxyHttpRequestResponse>()
+                val annotations = mockk<Annotations>()
+                every { item.annotations() } returns annotations
+                every { annotations.notes() } returns "[mcp-tag: interesting]"
+                item
+            }
+
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns items
+
+            mockkStatic("net.portswigger.mcp.schema.SerializationKt")
+
+            items.forEachIndexed { i, item ->
+                every { item.toSerializableForm() } returns HttpRequestResponse(
+                    request = "GET /page${i + 1} HTTP/1.1",
+                    response = "HTTP/1.1 200 OK",
+                    notes = "[mcp-tag: interesting]"
+                )
+            }
+
+            runBlocking {
+                val result1 = client.callTool(
+                    "search_proxy_history_by_tag", mapOf(
+                        "tag" to "interesting",
+                        "count" to 2,
+                        "offset" to 0
+                    )
+                )
+
+                delay(100)
+                val text1 = result1.expectTextContent()
+                assertTrue(text1.contains("GET /page1"))
+                assertTrue(text1.contains("GET /page2"))
+                assertFalse(text1.contains("GET /page3"))
+
+                val result2 = client.callTool(
+                    "search_proxy_history_by_tag", mapOf(
+                        "tag" to "interesting",
+                        "count" to 2,
+                        "offset" to 2
+                    )
+                )
+
+                delay(100)
+                val text2 = result2.expectTextContent()
+                assertTrue(text2.contains("GET /page3"))
+
+                val result3 = client.callTool(
+                    "search_proxy_history_by_tag", mapOf(
+                        "tag" to "interesting",
+                        "count" to 2,
+                        "offset" to 3
+                    )
+                )
+
+                delay(100)
+                result3.expectTextContent("Reached end of items")
+            }
+        }
     }
 
     @Nested
