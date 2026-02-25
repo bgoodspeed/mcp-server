@@ -690,6 +690,63 @@ class ToolsKtTest {
     }
     
     @Nested
+    inner class BambdaToolsTests {
+        private val bambda = mockk<burp.api.montoya.bambda.Bambda>()
+
+        @BeforeEach
+        fun setupBambda() {
+            every { api.bambda() } returns bambda
+        }
+
+        @Test
+        fun `import bambda should return success when no errors`() {
+            val importResult = mockk<burp.api.montoya.bambda.BambdaImportResult>()
+            every { importResult.status() } returns burp.api.montoya.bambda.BambdaImportResult.Status.LOADED_WITHOUT_ERRORS
+            every { importResult.importErrors() } returns emptyList()
+            every { bambda.importBambda(any()) } returns importResult
+
+            val script = "some bambda script content"
+
+            runBlocking {
+                val result = client.callTool(
+                    "import_bambda", mapOf(
+                        "script" to script
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Bambda imported successfully (status: LOADED_WITHOUT_ERRORS)")
+            }
+
+            verify(exactly = 1) { bambda.importBambda(script) }
+        }
+
+        @Test
+        fun `import bambda should return errors when script is invalid`() {
+            val importResult = mockk<burp.api.montoya.bambda.BambdaImportResult>()
+            every { importResult.status() } returns burp.api.montoya.bambda.BambdaImportResult.Status.LOADED_WITH_ERRORS
+            every { importResult.importErrors() } returns listOf("Compilation error: unexpected token", "Missing return statement")
+            every { bambda.importBambda(any()) } returns importResult
+
+            runBlocking {
+                val result = client.callTool(
+                    "import_bambda", mapOf(
+                        "script" to "invalid bambda"
+                    )
+                )
+
+                delay(100)
+                val text = result.expectTextContent()
+                assertTrue(text.contains("LOADED_WITH_ERRORS"))
+                assertTrue(text.contains("Compilation error: unexpected token"))
+                assertTrue(text.contains("Missing return statement"))
+            }
+
+            verify(exactly = 1) { bambda.importBambda("invalid bambda") }
+        }
+    }
+
+    @Nested
     inner class PaginatedToolsTests {
         @Test
         fun `get proxy history should paginate properly`() {

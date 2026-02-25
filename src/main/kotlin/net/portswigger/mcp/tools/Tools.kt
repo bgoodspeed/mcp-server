@@ -338,6 +338,27 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
 
         "Editor text has been set"
     }
+
+    mcpTool<ImportBambda>(
+        "Imports a Bambda script into Burp Suite. " +
+        "Bambdas are Java-based snippets used to customize Burp behavior (e.g. proxy filter rules, HTTP match/replace). " +
+        "The script is a self-contained Bambda definition. " +
+        "If a Bambda with the same ID already exists, it will be replaced. " +
+        "Returns the import status and any validation errors."
+    ) {
+        api.logging().logToOutput("MCP importing Bambda")
+
+        val result = api.bambda().importBambda(script)
+
+        val status = result.status().name
+        val errors = result.importErrors()
+
+        if (errors.isEmpty()) {
+            "Bambda imported successfully (status: $status)"
+        } else {
+            "Bambda imported with errors (status: $status):\n${errors.joinToString("\n")}"
+        }
+    }
 }
 
 fun getActiveEditor(api: MontoyaApi): JTextArea? {
@@ -459,4 +480,9 @@ data class GetCollaboratorInteractions(
 data class ImportBCheck(
     val script: String,
     val enabled: Boolean? = null
+)
+
+@Serializable
+data class ImportBambda(
+    val script: String
 )
