@@ -410,7 +410,7 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
         "The tag is stored as [mcp-tag: value] metadata in the request's notes."
     ) {
         val allowed = runBlocking {
-            checkHistoryPermissionOrDeny(HistoryAccessType.HTTP_HISTORY, config, api, "HTTP history tag")
+            checkDataAccessOrDeny(DataAccessType.HTTP_HISTORY, config, api, "HTTP history tag")
         }
         if (!allowed) {
             return@mcpTool "HTTP history access denied by Burp Suite"
@@ -435,7 +435,7 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
         "The index is the 0-based position in the proxy history list (same ordering as get_proxy_http_history)."
     ) {
         val allowed = runBlocking {
-            checkHistoryPermissionOrDeny(HistoryAccessType.HTTP_HISTORY, config, api, "HTTP history tag")
+            checkDataAccessOrDeny(DataAccessType.HTTP_HISTORY, config, api, "HTTP history tag")
         }
         if (!allowed) {
             return@mcpTool "HTTP history access denied by Burp Suite"
@@ -466,7 +466,7 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
         "Returns all proxy history items where any [mcp-tag: ...] value contains the search string (case-insensitive)."
     ) {
         val allowed = runBlocking {
-            checkHistoryPermissionOrDeny(HistoryAccessType.HTTP_HISTORY, config, api, "HTTP history tag search")
+            checkDataAccessOrDeny(DataAccessType.HTTP_HISTORY, config, api, "HTTP history tag search")
         }
         if (!allowed) {
             return@mcpPaginatedTool sequenceOf("HTTP history access denied by Burp Suite")
