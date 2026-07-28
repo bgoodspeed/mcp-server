@@ -639,6 +639,107 @@ class ToolsKtTest {
     }
 
     @Nested
+    inner class SessionHandlingConfigToolsTests {
+        @Test
+        fun `get session handling config should extract sessions subtree`() {
+            val burpSuite = mockk<burp.api.montoya.burpsuite.BurpSuite>()
+
+            every { api.burpSuite() } returns burpSuite
+            every { burpSuite.exportProjectOptionsAsJson() } returns
+                """{"project_options":{"sessions":{"cookie_jar":{},"macros":{"macros":[]},"session_handling_rules":{"rules":[]}},"connections":{}}}"""
+            every { config.filterConfigCredentials } returns true
+
+            runBlocking {
+                val result = client.callTool("get_session_handling_config", emptyMap())
+
+                delay(100)
+                result.expectTextContent("""{"cookie_jar":{},"macros":{"macros":[]},"session_handling_rules":{"rules":[]}}""")
+            }
+        }
+
+        @Test
+        fun `get session handling config should fall back to empty object when sessions key absent`() {
+            val burpSuite = mockk<burp.api.montoya.burpsuite.BurpSuite>()
+
+            every { api.burpSuite() } returns burpSuite
+            every { burpSuite.exportProjectOptionsAsJson() } returns """{"project_options":{"connections":{}}}"""
+            every { config.filterConfigCredentials } returns true
+
+            runBlocking {
+                val result = client.callTool("get_session_handling_config", emptyMap())
+
+                delay(100)
+                result.expectTextContent("{}")
+            }
+        }
+
+        @Test
+        fun `set session handling config should wrap sessions subtree and respect config editing toggle`() {
+            val burpSuite = mockk<burp.api.montoya.burpsuite.BurpSuite>()
+            val jsonSlot = slot<String>()
+
+            every { api.burpSuite() } returns burpSuite
+            every { burpSuite.importProjectOptionsFromJson(capture(jsonSlot)) } just runs
+            every { api.logging().logToOutput(any()) } just runs
+
+            runBlocking {
+                val result = client.callTool(
+                    "set_session_handling_config", mapOf(
+                        "json" to """{"macros":{"macros":[]}}"""
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Session handling configuration has been applied")
+            }
+
+            verify(exactly = 1) { burpSuite.importProjectOptionsFromJson(any()) }
+            assertEquals("""{"project_options":{"sessions":{"macros":{"macros":[]}}}}""", jsonSlot.captured)
+
+            clearMocks(burpSuite, answers = false)
+
+            every { config.configEditingTooling } returns false
+
+            runBlocking {
+                val result = client.callTool(
+                    "set_session_handling_config", mapOf(
+                        "json" to """{"macros":{"macros":[]}}"""
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("User has disabled configuration editing. They can enable it in the MCP tab in Burp by selecting 'Enable tools that can edit your config'")
+            }
+
+            verify(exactly = 0) { burpSuite.importProjectOptionsFromJson(any()) }
+        }
+
+        @Test
+        fun `set session handling config should unwrap an over-wrapped full export instead of double-wrapping`() {
+            val burpSuite = mockk<burp.api.montoya.burpsuite.BurpSuite>()
+            val jsonSlot = slot<String>()
+
+            every { api.burpSuite() } returns burpSuite
+            every { burpSuite.importProjectOptionsFromJson(capture(jsonSlot)) } just runs
+            every { api.logging().logToOutput(any()) } just runs
+
+            runBlocking {
+                val result = client.callTool(
+                    "set_session_handling_config", mapOf(
+                        "json" to """{"project_options":{"sessions":{"macros":{"macros":[]}}}}"""
+                    )
+                )
+
+                delay(100)
+                result.expectTextContent("Session handling configuration has been applied")
+            }
+
+            verify(exactly = 1) { burpSuite.importProjectOptionsFromJson(any()) }
+            assertEquals("""{"project_options":{"sessions":{"macros":{"macros":[]}}}}""", jsonSlot.captured)
+        }
+    }
+
+    @Nested
     inner class EditorTests {
         @Test
         fun `get active editor contents should handle no editor`() {

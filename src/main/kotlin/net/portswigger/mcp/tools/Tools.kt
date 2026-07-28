@@ -11,8 +11,12 @@ import burp.api.montoya.http.message.HttpHeader
 import burp.api.montoya.http.message.requests.HttpRequest
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import net.portswigger.mcp.config.McpConfig
 import net.portswigger.mcp.schema.toSerializableForm
 import net.portswigger.mcp.security.DataAccessSecurity
@@ -41,6 +45,47 @@ private fun truncateIfNeeded(serialized: String): String {
     } else {
         serialized
     }
+}
+
+private const val SESSIONS_KEY = "sessions"
+private const val PROJECT_OPTIONS_KEY = "project_options"
+
+/**
+ * Extracts the "sessions" subtree (session handling macros and rules) from a full
+ * project-options JSON export, i.e. `{"project_options": {"sessions": {...}, ...}, ...}`.
+ * Falls back to an empty JSON object if the "project_options" wrapper or the "sessions" key
+ * is absent, rather than erroring.
+ */
+private fun extractSessionsSubtree(fullProjectOptionsJson: String): String {
+    return try {
+        val root = Json.parseToJsonElement(fullProjectOptionsJson).jsonObject
+        val sessions = root[PROJECT_OPTIONS_KEY]?.jsonObject?.get(SESSIONS_KEY) ?: JsonObject(emptyMap())
+        Json.encodeToString(JsonElement.serializer(), sessions)
+    } catch (_: SerializationException) {
+        // Project options may contain credentials, so avoid echoing the raw parser
+        // exception message, which can quote surrounding input.
+        """{"error":"failed to parse project options json"}"""
+    }
+}
+
+/**
+ * Wraps a raw "sessions" subtree JSON string back into the `{"project_options": {"sessions": ...}}`
+ * shape expected by importProjectOptionsFromJson, so callers only need to supply the
+ * sessions-specific portion.
+ *
+ * Callers are told to pass just the sessions subtree, but an MCP client may confuse this with the
+ * full project-options export and pass the whole `{"project_options": {"sessions": ...}}` object.
+ * Wrapping that verbatim would nest it as `project_options.sessions.project_options.sessions`, which
+ * Burp silently ignores while the import still reports success. So if the input is already wrapped,
+ * we unwrap to its sessions subtree first rather than double-wrapping it.
+ */
+private fun wrapSessionsSubtree(sessionsJson: String): String {
+    val parsed = Json.parseToJsonElement(sessionsJson)
+    val sessions = (parsed as? JsonObject)
+        ?.get(PROJECT_OPTIONS_KEY)?.jsonObject?.get(SESSIONS_KEY)
+        ?: parsed
+    val wrapped = JsonObject(mapOf(PROJECT_OPTIONS_KEY to JsonObject(mapOf(SESSIONS_KEY to sessions))))
+    return Json.encodeToString(JsonElement.serializer(), wrapped)
 }
 
 private fun buildHttp2HeaderList(
@@ -252,6 +297,50 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
             api.burpSuite().importUserOptionsFromJson(json)
 
             "User configuration has been applied"
+        } else {
+            toolingDisabledMessage
+        }
+    }
+
+    mcpTool(
+        "get_session_handling_config",
+        "Outputs the current session handling configuration (Project options > Sessions: macros and rules) " +
+        "in JSON format. This is just the 'sessions' subtree of the project options, not the full config; " +
+        "its child keys are 'cookie_jar', 'macros', and 'session_handling_rules'. " +
+        "Use this to determine the schema for macros and rules, including any the user has already configured " +
+        "by hand, before writing with set_session_handling_config. This may contain sensitive data such as " +
+        "plaintext credentials or session cookies embedded in recorded macro requests."
+    ) {
+        val fullJson = api.burpSuite().exportProjectOptionsAsJson()
+        val sessionsSubtree = extractSessionsSubtree(fullJson)
+
+        if (config.filterConfigCredentials) {
+            filterConfigCredentials(sessionsSubtree)
+        } else {
+            sessionsSubtree
+        }
+    }
+
+    // NOTE: This is a raw JSON passthrough rather than structured create_session_handling_macro/rule
+    // tools because Burp's internal schema for macro items and rule actions isn't part of the typed
+    // Montoya API and isn't publicly documented. Once that schema is confirmed against a real Burp
+    // export, consider adding typed convenience tools that build this JSON from structured parameters.
+    mcpTool<SetSessionHandlingConfig>(
+        "Sets the session handling configuration (Project options > Sessions: macros and rules) from JSON. " +
+        "The json parameter must be just the 'sessions' subtree (child keys 'cookie_jar', 'macros', " +
+        "'session_handling_rules'), as returned by get_session_handling_config — call that first to learn the " +
+        "current schema and existing entries — not the full project options. " +
+        "This will be merged with the existing project configuration rather than replacing it wholesale, so " +
+        "stale macros/rules can persist if not explicitly removed. Be careful with rule scope: a rule with an " +
+        "overly broad scope (e.g. matching all URLs) can affect requests across the user's entire Burp " +
+        "session, not just the intended target."
+    ) {
+        if (config.configEditingTooling) {
+            api.logging().logToOutput("Setting session handling configuration: $json")
+            val wrapped = wrapSessionsSubtree(json)
+            api.burpSuite().importProjectOptionsFromJson(wrapped)
+
+            "Session handling configuration has been applied"
         } else {
             toolingDisabledMessage
         }
@@ -626,6 +715,14 @@ data class SetProjectOptions(val json: String)
 
 @Serializable
 data class SetUserOptions(val json: String)
+
+/**
+ * JSON for just the "sessions" subtree of Burp's project options (Project options > Sessions:
+ * session handling macros and rules). Call get_session_handling_config first to learn the current
+ * schema before writing.
+ */
+@Serializable
+data class SetSessionHandlingConfig(val json: String)
 
 @Serializable
 data class SetTaskExecutionEngineState(val running: Boolean)
