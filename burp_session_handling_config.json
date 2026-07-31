@@ -1,0 +1,206 @@
+{
+  "cookie_jar": {
+    "monitor_burp_ai": false,
+    "monitor_extender": false,
+    "monitor_intruder": true,
+    "monitor_proxy": true,
+    "monitor_repeater": true,
+    "monitor_scanner": true,
+    "monitor_sequencer": false
+  },
+  "macros": {
+    "macros": [
+      {
+        "description": "REDACTED",
+        "items": [
+          {
+            "accept_response_cookies": true,
+            "cookies_received": "rsa-fso-token, 65cbe58fa509e2bb8b87940ef6ba4d11, PD-S-SESSION-ID, redacteddc",
+            "custom_parameters": [],
+            "method": "POST",
+            "request": "POST /api/REDACTED/party-authentication/auth/authenticate HTTP/2\r\nHost: redacted.target.com\r\nContent-Type: application/json\r\nAccept: application/json, text/plain, */*\r\nX-Api-Key: 5f65069d2b28973a8614ef42917c2837\r\nX-Client-Id: REDACTED_CUST\r\nX-Fapi-Financial-Id: 001\r\nX-Application-Platform: DESKTOP_WEB\r\nChannels-Device-Id: BROWSER\r\nOrigin: https://redacted.target.com\r\nReferer: https://redacted.target.com/www/\r\n\r\n{\"userId\":\"Pentest004\",\"password\":\"Tested@123\",\"proxyId\":\"BROWSER\"}",
+            "request_parameters": [],
+            "response": "",
+            "status_code": 200,
+            "url": "https://redacted.target.com:443/api/REDACTED/party-authentication/auth/authenticate",
+            "use_request_cookies": true
+          },
+          {
+            "accept_response_cookies": true,
+            "cookies_received": "PD-S-SESSION-ID, redacteddb",
+            "custom_parameters": [
+              {
+                "end_at_delimiter": "\r\n",
+                "end_at_fixed_length": 36,
+                "end_mode": "at_delimiter",
+                "exclude_http_headers": false,
+                "extract_mode": "define_start_and_end",
+                "name": "TransactionId",
+                "start_af_offset": 0,
+                "start_after_expression": "?TransactionId=",
+                "start_at_mode": "after_expression",
+                "url_encoded": false
+              }
+            ],
+            "method": "POST",
+            "request": "POST /api/REDACTED/party-authentication/auth/elevate HTTP/2\r\nHost: redacted.target.com\r\nContent-Type: application/json\r\nAccept: application/json, text/plain, */*\r\nX-Api-Key: 5f65060000111100000\r\nX-Client-Id: REDACTED_CUST\r\nX-Fapi-Financial-Id: 001\r\nX-Application-Platform: DESKTOP_WEB\r\nChannels-Device-Id: BROWSER\r\nOrigin: https://redacted.target.com\r\nReferer: https://redacted.target.com/www/\r\n\r\n{}",
+            "request_parameters": [],
+            "response": "",
+            "status_code": 302,
+            "url": "https://redacted.target.com:443/api/REDACTED/party-authentication/auth/elevate",
+            "use_request_cookies": true
+          },
+          {
+            "accept_response_cookies": true,
+            "cookies_received": "PD-S-SESSION-ID, redacteddc",
+            "custom_parameters": [
+              {
+                "end_at_delimiter": "\"",
+                "end_at_fixed_length": 128,
+                "end_mode": "at_delimiter",
+                "exclude_http_headers": true,
+                "extract_mode": "define_start_and_end",
+                "name": "StateId",
+                "start_af_offset": 0,
+                "start_after_expression": "\"stateId\": \"",
+                "start_at_mode": "after_expression",
+                "url_encoded": false
+              }
+            ],
+            "method": "GET",
+            "request": "GET /aac/sps/apiauthsvc?TransactionId=PLACEHOLDER HTTP/2\r\nHost: redacted.target.com\r\nAccept: application/json, text/plain, */*\r\nX-Api-Key: 5f6500000011100000\r\nX-Client-Id: REDACT_CUST\r\nX-Fapi-Financial-Id: 001\r\nX-Application-Platform: DESKTOP_WEB\r\nChannels-Device-Id: BROWSER\r\nReferer: https://redacted.target.com/www/\r\n\r\n",
+            "request_parameters": [
+              {
+                "name": "TransactionId",
+                "original_value": "PLACEHOLDER",
+                "parameter_handling": "derive_from_prior_response",
+                "preset_value": "PLACEHOLDER",
+                "prior_response_index": 1,
+                "type": "url"
+              }
+            ],
+            "response": "",
+            "status_code": 200,
+            "url": "https://redacted.target.com:443/aac/sps/apiauthsvc?TransactionId=PLACEHOLDER",
+            "use_request_cookies": true
+          },
+          {
+            "accept_response_cookies": true,
+            "cookies_received": "PD-S-SESSION-ID, redacteddc",
+            "custom_parameters": [
+              {
+                "end_at_delimiter": "\"",
+                "end_at_fixed_length": 128,
+                "end_mode": "at_delimiter",
+                "exclude_http_headers": true,
+                "extract_mode": "define_start_and_end",
+                "name": "StateId2",
+                "start_af_offset": 0,
+                "start_after_expression": "\"stateId\": \"",
+                "start_at_mode": "after_expression",
+                "url_encoded": false
+              }
+            ],
+            "method": "POST",
+            "request": "POST /aac/sps/apiauthsvc?StateId=PLACEHOLDER HTTP/2\r\nHost: redacted.target.com\r\nContent-Type: application/json\r\nAccept: application/json, text/plain, */*\r\nX-Api-Key: 5f65069d2b28973a8614ef42917c2837\r\nX-Client-Id: REDACTED_CUST\r\nX-Fapi-Financial-Id: 001\r\nX-Application-Platform: DESKTOP_WEB\r\nChannels-Device-Id: BROWSER\r\nOrigin: https://redacted.target.com\r\nReferer: https://redacted.target.com/www/\r\n\r\n{\"otp.user.otp-method.id\":\"Email0\"}",
+            "request_parameters": [
+              {
+                "name": "StateId",
+                "original_value": "PLACEHOLDER",
+                "parameter_handling": "derive_from_prior_response",
+                "preset_value": "PLACEHOLDER",
+                "prior_response_index": 2,
+                "type": "url"
+              }
+            ],
+            "response": "",
+            "status_code": 200,
+            "url": "https://redacted.target.com:443/aac/sps/apiauthsvc?StateId=PLACEHOLDER",
+            "use_request_cookies": true
+          },
+          {
+            "accept_response_cookies": true,
+            "cookies_received": "PD-S-SESSION-ID, redacteddc",
+            "custom_parameters": [],
+            "method": "POST",
+            "request": "POST /aac/sps/authsvc?StateId=PLACEHOLDER&operation=verify HTTP/2\r\nHost: redacted.target.com\r\nContent-Type: application/x-www-form-urlencoded\r\nAccept: application/json, text/plain, */*\r\nX-Api-Key: 5f65069d2b28973a8614ef42917c2837\r\nX-Client-Id: REDACTED_CUST\r\nX-Fapi-Financial-Id: 001\r\nX-Application-Platform: DESKTOP_WEB\r\nChannels-Device-Id: BROWSER\r\nOrigin: https://redacted.target.com\r\nReferer: https://redacted.target.com/www/\r\n\r\notp.user.otp=111111&otp.consent=true",
+            "request_parameters": [
+              {
+                "name": "StateId",
+                "original_value": "PLACEHOLDER",
+                "parameter_handling": "derive_from_prior_response",
+                "preset_value": "PLACEHOLDER",
+                "prior_response_index": 3,
+                "type": "url"
+              }
+            ],
+            "response": "",
+            "status_code": 200,
+            "url": "https://redacted.target.com:443/aac/sps/authsvc?StateId=PLACEHOLDER&operation=verify",
+            "use_request_cookies": true
+          }
+        ],
+        "serial_number": 2884675357478201345
+      }
+    ]
+  },
+  "session_handling_rules": {
+    "rules": [
+      {
+        "actions": [
+          {
+            "enabled": true,
+            "invoke_extension_action": false,
+            "macro_serial_number": 2884675357478201345,
+            "match_cookies": "all_except",
+            "match_params": "all_except",
+            "tolerate_url_mismatch": false,
+            "type": "run_macro",
+            "update_with_cookies": true,
+            "update_with_params": true
+          }
+        ],
+        "description": "TARGET REDACTED Auto Re-Auth",
+        "enabled": false,
+        "exclude_from_scope": [],
+        "include_in_scope": [
+          {
+            "enabled": true,
+            "include_subdomains": false,
+            "prefix": "https://redacted.target.com/"
+          }
+        ],
+        "named_params": [],
+        "restrict_scope_to_named_params": false,
+        "tools_scope": [
+          "Scanner",
+          "Intruder",
+          "Repeater",
+          "Extensions"
+        ],
+        "url_scope": "suite",
+        "url_scope_advanced_mode": false
+      },
+      {
+        "actions": [
+          {
+            "enabled": true,
+            "match_cookies": "all_except",
+            "type": "use_cookies"
+          }
+        ],
+        "description": "Use cookies from Burp's cookie jar",
+        "enabled": true,
+        "exclude_from_scope": [],
+        "include_in_scope": [],
+        "named_params": [],
+        "restrict_scope_to_named_params": false,
+        "tools_scope": [
+          "Scanner"
+        ],
+        "url_scope": "all",
+        "url_scope_advanced_mode": false
+      }
+    ]
+  }
+}
